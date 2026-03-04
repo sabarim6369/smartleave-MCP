@@ -4,36 +4,57 @@ A comprehensive Leave Management System backend built with Node.js and Express.j
 
 ## Features
 
-- ✅ User Authentication (Login/Register)
+- ✅ User Authentication (Login/Register) with bcrypt password hashing
 - ✅ Role-based Access Control (Admin, Manager, Employee)
+- ✅ MongoDB Database with Mongoose ODM
 - ✅ Leave Application Management
 - ✅ Leave Balance Tracking
 - ✅ Leave Approval/Rejection Workflow
 - ✅ Multiple Leave Types (Casual, Sick, Annual, Unpaid)
 - ✅ Manager Dashboard for Pending Leaves
 - ✅ Admin Panel for User Management
+- ✅ Persistent Data Storage with MongoDB
+- ✅ Secure Password Hashing
+- ✅ Environment-based Configuration
 
 ## Project Structure
 
 ```
 Backend/
+├── config/
+│   └── database.js           # MongoDB connection configuration
 ├── controllers/
-│   ├── authController.js      # Authentication & User management
-│   └── leaveController.js     # Leave management operations
+│   ├── authController.js     # Authentication & User management
+│   └── leaveController.js    # Leave management operations
 ├── models/
-│   ├── user.js               # User data model
-│   └── leave.js              # Leave data model
+│   ├── schemas/
+│   │   ├── userSchema.js     # Mongoose User schema
+│   │   └── leaveSchema.js    # Mongoose Leave schema
+│   ├── user.js               # User model with MongoDB operations
+│   └── leave.js              # Leave model with MongoDB operations
 ├── routes/
 │   ├── authRoutes.js         # Authentication routes
 │   └── leaveRoutes.js        # Leave management routes
 ├── middleware/
 │   └── auth.js               # Authentication middleware
+├── .env                      # Environment variables (not in git)
+├── .env.example              # Environment template
+├── .gitignore                # Git ignore file
 ├── server.js                 # Application entry point
-└── package.json
-
+└── package.json              # Dependencies and scripts
 ```
 
 ## Installation
+
+### Prerequisites
+
+1. **MongoDB**: Install MongoDB locally or set up MongoDB Atlas
+   - Local: Follow [MONGODB_SETUP.md](../MONGODB_SETUP.md) for detailed installation instructions
+   - Cloud: Create a free MongoDB Atlas account at [https://www.mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas)
+
+2. **Node.js**: Version 14 or higher
+
+### Setup Steps
 
 1. Navigate to the Backend directory:
 ```bash
@@ -44,8 +65,39 @@ cd Backend
 ```bash
 npm install
 ```
+This will install:
+- express (^4.18.2) - Web framework
+- cors (^2.8.5) - CORS middleware
+- mongoose (^8.0.3) - MongoDB ODM
+- bcryptjs (^2.4.3) - Password hashing
+- dotenv (^16.3.1) - Environment variables
 
-3. Start the server:
+3. Configure environment variables:
+```bash
+# Copy the example env file
+cp .env.example .env
+
+# Edit .env and update the MongoDB connection string
+# For local MongoDB:
+MONGODB_URI=mongodb://localhost:27017/smartleave
+
+# For MongoDB Atlas:
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/smartleave
+
+PORT=3000
+NODE_ENV=development
+```
+
+4. Start MongoDB (if running locally):
+```bash
+# Windows
+net start MongoDB
+
+# macOS/Linux
+sudo systemctl start mongod
+```
+
+5. Start the backend server:
 ```bash
 # Development mode with auto-reload
 npm run dev
@@ -54,7 +106,10 @@ npm run dev
 npm start
 ```
 
-The server will run on `http://localhost:3000`
+The server will run on `http://localhost:3000` and automatically:
+- Connect to MongoDB
+- Create database collections
+- Initialize default users with hashed passwords
 
 ## Default Users
 
@@ -379,26 +434,34 @@ curl -X POST http://localhost:3000/api/auth/register \
 
 ## Development Notes
 
-- This is a development version using in-memory data storage
-- For production, integrate a proper database (MongoDB, PostgreSQL, etc.)
-- Implement proper JWT-based authentication
-- Add password hashing with bcrypt
-- Add input validation middleware
-- Implement rate limiting
-- Add logging system
-- Set up environment variables (.env file)
+- ✅ **MongoDB Integration**: Uses MongoDB with Mongoose for persistent data storage
+- ✅ **Password Security**: Implements bcrypt password hashing (10 salt rounds)
+- ✅ **Environment Configuration**: Uses dotenv for environment variables (.env file)
+- ✅ **Async Operations**: All database operations use async/await patterns
+- 🔄 **JWT Authentication**: Currently uses session-based authentication (can be upgraded to JWT)
+- 🔄 **Input Validation**: Basic validation implemented (can be enhanced with express-validator)
+
+### Production Recommendations
+- Implement JWT-based authentication for stateless API
+- Add comprehensive input validation middleware
+- Implement rate limiting for API endpoints
+- Add logging system (Winston, Morgan)
+- Enable HTTPS and secure headers (Helmet.js)
+- Set up MongoDB indexes for query optimization
+- Implement database backups and monitoring
 
 ## Future Enhancements
 
-- [ ] Database integration
-- [ ] JWT authentication
-- [ ] Email notifications
+- [ ] JWT token-based authentication
+- [ ] Email notifications for leave requests
 - [ ] Leave calendar view
 - [ ] Leave carry-forward rules
 - [ ] Public holidays management
 - [ ] Leave reports and analytics
 - [ ] Multiple approver workflow
 - [ ] Leave policy configuration
+- [ ] Document attachments for leave requests
+- [ ] Leave history and audit trail
 
 ## License
 
