@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "smartleave": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\sabar\\Documents\\Projects\\SmartLeave MCP\\mcp-leave-server\\server.js"
+      ]
+    }
+  }
+}

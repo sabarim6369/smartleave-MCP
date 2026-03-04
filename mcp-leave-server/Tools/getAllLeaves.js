@@ -1,13 +1,13 @@
 const { apiRequest, formatSuccess, formatError } = require('../utils');
 
 /**
- * Get my leave applications
+ * Get all leaves (Admin only)
  */
-async function getMyLeaves(args) {
+async function getAllLeaves(args) {
   try {
     const { status } = args || {};
     
-    let endpoint = '/api/leaves/my-leaves';
+    let endpoint = '/api/leaves/all';
     if (status) {
       endpoint += `?status=${status}`;
     }
@@ -18,16 +18,16 @@ async function getMyLeaves(args) {
       leaves: result.data,
       count: result.count,
       message: `Retrieved ${result.count} leave application(s)`
-    }, 'Leaves retrieved successfully');
+    }, 'All leaves retrieved');
   } catch (error) {
     return formatError(error);
   }
 }
 
 // Tool definition for MCP
-const getMyLeavesTool = {
-  name: 'get_my_leaves',
-  description: 'Get all leave applications submitted by the logged-in user. Can optionally filter by status (pending, approved, rejected, cancelled).',
+const getAllLeavesTool = {
+  name: 'get_all_leaves',
+  description: 'Get all leave applications in the system with user details. Admin only. Can optionally filter by status.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -41,4 +41,4 @@ const getMyLeavesTool = {
   }
 };
 
-module.exports = { getMyLeaves, getMyLeavesTool };
+module.exports = { getAllLeaves, getAllLeavesTool };
