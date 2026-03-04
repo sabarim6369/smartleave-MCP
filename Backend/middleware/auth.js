@@ -2,7 +2,7 @@ const { findUserById } = require('../models/user');
 
 // Mock authentication middleware
 // In production, use JWT and verify tokens properly
-const authenticateUser = (req, res, next) => {
+const authenticateUser = async (req, res, next) => {
   try {
     // Get token from header
     const authHeader = req.headers.authorization;
@@ -27,7 +27,7 @@ const authenticateUser = (req, res, next) => {
       });
     }
 
-    const user = findUserById(parseInt(userId));
+    const user = await findUserById(userId);
     
     if (!user) {
       return res.status(401).json({
@@ -37,7 +37,7 @@ const authenticateUser = (req, res, next) => {
     }
 
     // Attach user info to request
-    req.userId = user.id;
+    req.userId = user._id;
     req.userRole = user.role;
     
     next();

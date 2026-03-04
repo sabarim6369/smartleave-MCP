@@ -1,5 +1,7 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const connectDB = require('./config/database');
 const { initializeDefaultUsers } = require('./models/user');
 
 const app = express();
@@ -16,8 +18,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize default users
-initializeDefaultUsers();
+// Connect to MongoDB
+connectDB();
+
+// Initialize default users after connection
+connectDB().then(() => {
+  initializeDefaultUsers();
+});
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));

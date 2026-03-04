@@ -40,7 +40,7 @@ const calculateLeaveDays = (startDate, endDate) => {
 };
 
 // Apply for leave
-const applyLeave = (req, res) => {
+const applyLeave = async (req, res) => {
   try {
     const userId = req.userId; // From auth middleware
     const { leaveType, startDate, endDate, reason } = req.body;
@@ -93,7 +93,7 @@ const applyLeave = (req, res) => {
 
     // Check leave balance (except for unpaid leave)
     if (leaveType !== LEAVE_TYPES.UNPAID) {
-      const user = findUserById(userId);
+      const user = await findUserById(userId);
       if (!user) {
         return res.status(404).json({
           success: false,
@@ -102,7 +102,7 @@ const applyLeave = (req, res) => {
       }
 
       const currentYear = new Date().getFullYear();
-      const usedDays = getUsedLeaveDays(userId, leaveType, currentYear);
+      const usedDays = await getUsedLeaveDays(userId, leaveType, currentYear);
       const availableBalance = user.leaveBalance[leaveType] - usedDays;
 
       if (days > availableBalance) {
@@ -114,7 +114,7 @@ const applyLeave = (req, res) => {
     }
 
     // Create leave application
-    const leave = createLeave({
+    const leave = await createLeave({
       userId,
       leaveType,
       startDate,
@@ -137,12 +137,12 @@ const applyLeave = (req, res) => {
 };
 
 // Get my leaves
-const getMyLeaves = (req, res) => {
+const getMyLeaves = async (req, res) => {
   try {
     const userId = req.userId; // From auth middleware
     const { status } = req.query;
 
-    let leaves = getLeavesByUserId(userId);
+    let leaves = await getLeavesByUserId(userId);
 
     if (status) {
       leaves = leaves.filter(l => l.status === status);
@@ -162,11 +162,11 @@ const getMyLeaves = (req, res) => {
 };
 
 // Get leave balance
-const getLeaveBalance = (req, res) => {
+const getLeaveBalance = async (req, res) => {
   try {
     const userId = req.userId; // From auth middleware
 
-    const user = findUserById(userId);
+    const user = await findUserById(userId);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -178,9 +178,9 @@ const getLeaveBalance = (req, res) => {
     
     // Calculate balance for each leave type
     const balance = {};
-    Object.values(LEAVE_TYPES).forEach(type => {
+    for (const type of Object.values(LEAVE_TYPES)) {
       const total = user.leaveBalance[type] || 0;
-      const used = getUsedLeaveDays(userId, type, currentYear);
+      const used = await getUsedLeaveDays(userId, type, currentYear);
       const available = total - used;
 
       balance[type] = {
@@ -188,7 +188,7 @@ const getLeaveBalance = (req, res) => {
         used,
         available
       };
-    });
+    }
 
     res.json({
       success: true,
@@ -206,10 +206,10 @@ const getLeaveBalance = (req, res) => {
 };
 
 // Get pending leaves (for manager/admin)
-const getPendingLeavesForApproval = (req, res) => {
+const getPendingLeavesForApproval = async (req, res) => {
   try {
     const userId = req.userId; // From auth middleware
-    const user = findUserById(userId);
+    const user = await findUserById(userId);
 
     if (!user) {
       return res.status(404).json({
@@ -222,12 +222,12 @@ const getPendingLeavesForApproval = (req, res) => {
 
     if (user.role === 'admin') {
       // Admin can see all pending leaves
-      pendingLeaves = getPendingLeaves();
+      pendingLeaves = await getPendingLeaves();
     } else if (user.role === 'manager') {
       // Manager can see pending leaves of their team members
-      const teamMembers = getUsersByManagerId(userId);
-      const teamMemberIds = teamMembers.map(tm => tm.id);
-      pendingLeaves = getPendingLeavesByManagerId(userId, teamMemberIds);
+      const teamMembers = await getUsersByManagerId(userId);
+      const teamMemberIds = teamMembers.map(tm => tm._id);
+      pendingLeaves = await getPendingLeavesByManagerId(userId, teamMemberIds);
     } else {
       return res.status(403).json({
         success: false,
@@ -235,25 +235,10 @@ const getPendingLeavesForApproval = (req, res) => {
       });
     }
 
-    // Get user details for each leave
-    const leavesWithUserDetails = pendingLeaves.map(leave => {
-      const leaveUser = findUserById(leave.userId);
-      return {
-        ...leave,
-        user: leaveUser ? {
-          id: leaveUser.id,
-          name: leaveUser.name,
-          email: leaveUser.email,
-          employeeId: leaveUser.employeeId,
-          department: leaveUser.department
-        } : null
-      };
-    });
-
     res.json({
       success: true,
-      data: leavesWithUserDetails,
-      count: leavesWithUserDetails.length
+      data: pendingLeaves,
+      count: pendingLeaves.length
     });
   } catch (error) {
     res.status(500).json({
@@ -264,12 +249,12 @@ const getPendingLeavesForApproval = (req, res) => {
 };
 
 // Approve leave
-const approveLeave = (req, res) => {
+const approveLeave = async (req, res) => {
   try {
     const userId = req.userId; // From auth middleware
     const { leaveId } = req.params;
 
-    const user = findUserById(userId);
+    const user = await findUserById(userId);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -285,7 +270,7 @@ const approveLeave = (req, res) => {
       });
     }
 
-    const leave = getLeaveById(leaveId);
+    const leave = await getLeaveById(leaveId);
     if (!leave) {
       return res.status(404).json({
         success: false,
@@ -302,8 +287,9 @@ const approveLeave = (req, res) => {
 
     // If manager, check if the leave belongs to their team member
     if (user.role === 'manager') {
-      const leaveUser = findUserById(leave.userId);
-      if (!leaveUser || leaveUser.managerId !== userId) {
+      const leaveUserId = leave.userId._id || leave.userId;
+      const leaveUser = await findUserById(leaveUserId);
+      if (!leaveUser || leaveUser.managerId?.toString() !== userId.toString()) {
         return res.status(403).json({
           success: false,
           message: 'Access denied. You can only approve leaves of your team members.'
@@ -311,7 +297,7 @@ const approveLeave = (req, res) => {
       }
     }
 
-    const updatedLeave = updateLeaveStatus(leaveId, LEAVE_STATUS.APPROVED, userId);
+    const updatedLeave = await updateLeaveStatus(leaveId, LEAVE_STATUS.APPROVED, userId);
 
     res.json({
       success: true,
@@ -327,7 +313,7 @@ const approveLeave = (req, res) => {
 };
 
 // Reject leave
-const rejectLeave = (req, res) => {
+const rejectLeave = async (req, res) => {
   try {
     const userId = req.userId; // From auth middleware
     const { leaveId } = req.params;
@@ -340,7 +326,7 @@ const rejectLeave = (req, res) => {
       });
     }
 
-    const user = findUserById(userId);
+    const user = await findUserById(userId);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -356,7 +342,7 @@ const rejectLeave = (req, res) => {
       });
     }
 
-    const leave = getLeaveById(leaveId);
+    const leave = await getLeaveById(leaveId);
     if (!leave) {
       return res.status(404).json({
         success: false,
@@ -373,8 +359,9 @@ const rejectLeave = (req, res) => {
 
     // If manager, check if the leave belongs to their team member
     if (user.role === 'manager') {
-      const leaveUser = findUserById(leave.userId);
-      if (!leaveUser || leaveUser.managerId !== userId) {
+      const leaveUserId = leave.userId._id || leave.userId;
+      const leaveUser = await findUserById(leaveUserId);
+      if (!leaveUser || leaveUser.managerId?.toString() !== userId.toString()) {
         return res.status(403).json({
           success: false,
           message: 'Access denied. You can only reject leaves of your team members.'
@@ -382,7 +369,7 @@ const rejectLeave = (req, res) => {
       }
     }
 
-    const updatedLeave = updateLeaveStatus(leaveId, LEAVE_STATUS.REJECTED, userId, reason);
+    const updatedLeave = await updateLeaveStatus(leaveId, LEAVE_STATUS.REJECTED, userId, reason);
 
     res.json({
       success: true,
@@ -398,12 +385,12 @@ const rejectLeave = (req, res) => {
 };
 
 // Cancel leave
-const cancelMyLeave = (req, res) => {
+const cancelMyLeave = async (req, res) => {
   try {
     const userId = req.userId; // From auth middleware
     const { leaveId } = req.params;
 
-    const leave = cancelLeave(leaveId, userId);
+    const leave = await cancelLeave(leaveId, userId);
 
     res.json({
       success: true,
@@ -419,12 +406,12 @@ const cancelMyLeave = (req, res) => {
 };
 
 // Get all leaves (admin only)
-const getAllLeavesAdmin = (req, res) => {
+const getAllLeavesAdmin = async (req, res) => {
   try {
     const userId = req.userId; // From auth middleware
     const { status } = req.query;
 
-    const user = findUserById(userId);
+    const user = await findUserById(userId);
     if (!user || user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -432,31 +419,16 @@ const getAllLeavesAdmin = (req, res) => {
       });
     }
 
-    let leaves = getAllLeaves();
+    let leaves = await getAllLeaves();
 
     if (status) {
       leaves = leaves.filter(l => l.status === status);
     }
 
-    // Get user details for each leave
-    const leavesWithUserDetails = leaves.map(leave => {
-      const leaveUser = findUserById(leave.userId);
-      return {
-        ...leave,
-        user: leaveUser ? {
-          id: leaveUser.id,
-          name: leaveUser.name,
-          email: leaveUser.email,
-          employeeId: leaveUser.employeeId,
-          department: leaveUser.department
-        } : null
-      };
-    });
-
     res.json({
       success: true,
-      data: leavesWithUserDetails,
-      count: leavesWithUserDetails.length
+      data: leaves,
+      count: leaves.length
     });
   } catch (error) {
     res.status(500).json({

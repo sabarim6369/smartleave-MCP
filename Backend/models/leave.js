@@ -1,165 +1,203 @@
-const leaves = [];
-let leaveId = 1;
-
-// Leave types
-const LEAVE_TYPES = {
-  CASUAL: 'casual',
-  SICK: 'sick',
-  ANNUAL: 'annual',
-  UNPAID: 'unpaid'
-};
-
-// Leave status
-const LEAVE_STATUS = {
-  PENDING: 'pending',
-  APPROVED: 'approved',
-  REJECTED: 'rejected',
-  CANCELLED: 'cancelled'
-};
-
-class Leave {
-  constructor(data) {
-    this.id = leaveId++;
-    this.userId = data.userId;
-    this.leaveType = data.leaveType;
-    this.startDate = data.startDate;
-    this.endDate = data.endDate;
-    this.days = data.days;
-    this.reason = data.reason;
-    this.status = LEAVE_STATUS.PENDING;
-    this.appliedDate = new Date().toISOString();
-    this.approvedBy = null;
-    this.approvedDate = null;
-    this.rejectionReason = null;
-  }
-}
+const { Leave, LEAVE_TYPES, LEAVE_STATUS } = require('./schemas/leaveSchema');
 
 // Create a leave application
-const createLeave = (leaveData) => {
-  const leave = new Leave(leaveData);
-  leaves.push(leave);
-  return leave;
+const createLeave = async (leaveData) => {
+  try {
+    const leave = new Leave(leaveData);
+    await leave.save();
+    return leave;
+  } catch (error) {
+    throw error;
+  }
 };
 
 // Get leave by ID
-const getLeaveById = (id) => {
-  return leaves.find(l => l.id === parseInt(id));
+const getLeaveById = async (id) => {
+  try {
+    return await Leave.findById(id).populate('userId', 'name email employeeId department');
+  } catch (error) {
+    return null;
+  }
 };
 
 // Get leaves by user ID
-const getLeavesByUserId = (userId) => {
-  return leaves.filter(l => l.userId === parseInt(userId));
+const getLeavesByUserId = async (userId) => {
+  try {
+    return await Leave.find({ userId }).sort({ appliedDate: -1 });
+  } catch (error) {
+    return [];
+  }
 };
 
 // Get all leaves
-const getAllLeaves = () => {
-  return leaves;
+const getAllLeaves = async () => {
+  try {
+    return await Leave.find()
+      .populate('userId', 'name email employeeId department')
+      .sort({ appliedDate: -1 });
+  } catch (error) {
+    return [];
+  }
 };
 
 // Get pending leaves
-const getPendingLeaves = () => {
-  return leaves.filter(l => l.status === LEAVE_STATUS.PENDING);
+const getPendingLeaves = async () => {
+  try {
+    return await Leave.find({ status: LEAVE_STATUS.PENDING })
+      .populate('userId', 'name email employeeId department')
+      .sort({ appliedDate: -1 });
+  } catch (error) {
+    return [];
+  }
 };
 
 // Get leaves by status
-const getLeavesByStatus = (status) => {
-  return leaves.filter(l => l.status === status);
+const getLeavesByStatus = async (status) => {
+  try {
+    return await Leave.find({ status })
+      .populate('userId', 'name email employeeId department')
+      .sort({ appliedDate: -1 });
+  } catch (error) {
+    return [];
+  }
 };
 
 // Get pending leaves for a manager (by team members)
-const getPendingLeavesByManagerId = (managerId, teamMemberIds) => {
-  return leaves.filter(l => 
-    l.status === LEAVE_STATUS.PENDING && 
-    teamMemberIds.includes(l.userId)
-  );
+const getPendingLeavesByManagerId = async (managerId, teamMemberIds) => {
+  try {
+    return await Leave.find({
+      status: LEAVE_STATUS.PENDING,
+      userId: { $in: teamMemberIds }
+    })
+      .populate('userId', 'name email employeeId department')
+      .sort({ appliedDate: -1 });
+  } catch (error) {
+    return [];
+  }
 };
 
 // Update leave status
-const updateLeaveStatus = (leaveId, status, approvedBy, rejectionReason = null) => {
-  const leave = getLeaveById(leaveId);
-  if (!leave) {
-    throw new Error('Leave not found');
-  }
+const updateLeaveStatus = async (leaveId, status, approvedBy, rejectionReason = null) => {
+  try {
+    const updateData = {
+      status
+    };
 
-  leave.status = status;
-  
-  if (status === LEAVE_STATUS.APPROVED || status === LEAVE_STATUS.REJECTED) {
-    leave.approvedBy = approvedBy;
-    leave.approvedDate = new Date().toISOString();
-  }
+    if (status === LEAVE_STATUS.APPROVED || status === LEAVE_STATUS.REJECTED) {
+      updateData.approvedBy = approvedBy;
+      updateData.approvedDate = new Date();
+    }
 
-  if (status === LEAVE_STATUS.REJECTED && rejectionReason) {
-    leave.rejectionReason = rejectionReason;
-  }
+    if (status === LEAVE_STATUS.REJECTED && rejectionReason) {
+      updateData.rejectionReason = rejectionReason;
+    }
 
-  return leave;
+    const leave = await Leave.findByIdAndUpdate(
+      leaveId,
+      { $set: updateData },
+      { new: true }
+    ).populate('userId', 'name email employeeId department');
+
+    if (!leave) {
+      throw new Error('Leave not found');
+    }
+
+    return leave;
+  } catch (error) {
+    throw error;
+  }
 };
 
 // Cancel leave
-const cancelLeave = (leaveId, userId) => {
-  const leave = getLeaveById(leaveId);
-  if (!leave) {
-    throw new Error('Leave not found');
-  }
+const cancelLeave = async (leaveId, userId) => {
+  try {
+    const leave = await Leave.findById(leaveId);
+    
+    if (!leave) {
+      throw new Error('Leave not found');
+    }
 
-  if (leave.userId !== parseInt(userId)) {
-    throw new Error('Unauthorized to cancel this leave');
-  }
+    if (leave.userId.toString() !== userId.toString()) {
+      throw new Error('Unauthorized to cancel this leave');
+    }
 
-  if (leave.status !== LEAVE_STATUS.PENDING && leave.status !== LEAVE_STATUS.APPROVED) {
-    throw new Error('Cannot cancel leave with status: ' + leave.status);
-  }
+    if (leave.status !== LEAVE_STATUS.PENDING && leave.status !== LEAVE_STATUS.APPROVED) {
+      throw new Error('Cannot cancel leave with status: ' + leave.status);
+    }
 
-  leave.status = LEAVE_STATUS.CANCELLED;
-  return leave;
+    leave.status = LEAVE_STATUS.CANCELLED;
+    await leave.save();
+    
+    return leave;
+  } catch (error) {
+    throw error;
+  }
 };
 
 // Get leaves by date range
-const getLeavesByDateRange = (startDate, endDate) => {
-  return leaves.filter(l => {
-    const leaveStart = new Date(l.startDate);
-    const leaveEnd = new Date(l.endDate);
-    const rangeStart = new Date(startDate);
-    const rangeEnd = new Date(endDate);
-
-    return (leaveStart <= rangeEnd && leaveEnd >= rangeStart);
-  });
+const getLeavesByDateRange = async (startDate, endDate) => {
+  try {
+    return await Leave.find({
+      $or: [
+        {
+          startDate: { $lte: new Date(endDate) },
+          endDate: { $gte: new Date(startDate) }
+        }
+      ]
+    })
+      .populate('userId', 'name email employeeId department')
+      .sort({ startDate: 1 });
+  } catch (error) {
+    return [];
+  }
 };
 
 // Get approved leaves for a user by year
-const getApprovedLeavesByYear = (userId, year) => {
-  return leaves.filter(l => {
-    if (l.userId !== parseInt(userId)) return false;
-    if (l.status !== LEAVE_STATUS.APPROVED) return false;
-    
-    const leaveYear = new Date(l.startDate).getFullYear();
-    return leaveYear === parseInt(year);
-  });
+const getApprovedLeavesByYear = async (userId, year) => {
+  try {
+    const startOfYear = new Date(year, 0, 1);
+    const endOfYear = new Date(year, 11, 31, 23, 59, 59);
+
+    return await Leave.find({
+      userId,
+      status: LEAVE_STATUS.APPROVED,
+      startDate: { $gte: startOfYear, $lte: endOfYear }
+    });
+  } catch (error) {
+    return [];
+  }
 };
 
 // Calculate used leave days by type and year
-const getUsedLeaveDays = (userId, leaveType, year) => {
-  const approvedLeaves = leaves.filter(l => {
-    if (l.userId !== parseInt(userId)) return false;
-    if (l.status !== LEAVE_STATUS.APPROVED) return false;
-    if (l.leaveType !== leaveType) return false;
-    
-    const leaveYear = new Date(l.startDate).getFullYear();
-    return leaveYear === parseInt(year);
-  });
+const getUsedLeaveDays = async (userId, leaveType, year) => {
+  try {
+    const startOfYear = new Date(year, 0, 1);
+    const endOfYear = new Date(year, 11, 31, 23, 59, 59);
 
-  return approvedLeaves.reduce((total, leave) => total + leave.days, 0);
+    const approvedLeaves = await Leave.find({
+      userId,
+      leaveType,
+      status: LEAVE_STATUS.APPROVED,
+      startDate: { $gte: startOfYear, $lte: endOfYear }
+    });
+
+    return approvedLeaves.reduce((total, leave) => total + leave.days, 0);
+  } catch (error) {
+    return 0;
+  }
 };
 
 // Delete leave
-const deleteLeave = (id) => {
-  const leaveIndex = leaves.findIndex(l => l.id === parseInt(id));
-  if (leaveIndex === -1) {
-    throw new Error('Leave not found');
+const deleteLeave = async (id) => {
+  try {
+    const leave = await Leave.findByIdAndDelete(id);
+    if (!leave) {
+      throw new Error('Leave not found');
+    }
+    return leave;
+  } catch (error) {
+    throw error;
   }
-
-  const deletedLeave = leaves.splice(leaveIndex, 1)[0];
-  return deletedLeave;
 };
 
 module.exports = {

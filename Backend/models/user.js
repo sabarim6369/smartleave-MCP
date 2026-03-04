@@ -1,149 +1,190 @@
-const users = [];
-let userId = 1;
-
-// User roles
-const ROLES = {
-  EMPLOYEE: 'employee',
-  MANAGER: 'manager',
-  ADMIN: 'admin'
-};
-
-// Leave balances per year
-const DEFAULT_LEAVE_BALANCE = {
-  casual: 12,
-  sick: 10,
-  annual: 20,
-  unpaid: 0
-};
-
-class User {
-  constructor(data) {
-    this.id = userId++;
-    this.employeeId = data.employeeId;
-    this.name = data.name;
-    this.email = data.email;
-    this.password = data.password; // In production, this should be hashed
-    this.role = data.role || ROLES.EMPLOYEE;
-    this.department = data.department;
-    this.managerId = data.managerId || null;
-    this.joinDate = data.joinDate || new Date().toISOString();
-    this.leaveBalance = { ...DEFAULT_LEAVE_BALANCE };
-    this.createdAt = new Date().toISOString();
-  }
-}
+const bcrypt = require('bcryptjs');
+const { User, ROLES, DEFAULT_LEAVE_BALANCE } = require('./schemas/userSchema');
 
 // Create a user
-const createUser = (userData) => {
-  // Check if email already exists
-  const existingUser = users.find(u => u.email === userData.email);
-  if (existingUser) {
-    throw new Error('Email already exists');
-  }
+const createUser = async (userData) => {
+  try {
+    // Check if email already exists
+    const existingUser = await User.findOne({ email: userData.email });
+    if (existingUser) {
+      throw new Error('Email already exists');
+    }
 
-  // Check if employeeId already exists
-  const existingEmployeeId = users.find(u => u.employeeId === userData.employeeId);
-  if (existingEmployeeId) {
-    throw new Error('Employee ID already exists');
-  }
+    // Check if employeeId already exists
+    const existingEmployeeId = await User.findOne({ employeeId: userData.employeeId });
+    if (existingEmployeeId) {
+      throw new Error('Employee ID already exists');
+    }
 
-  const user = new User(userData);
-  users.push(user);
-  return user;
+    // Hash password before saving
+    const hashedPassword = await bcrypt.hash(userData.password, 10);
+    
+    // Create new user with hashed password
+    const user = new User({
+      ...userData,
+      password: hashedPassword
+    });
+
+    await user.save();
+    return user;
+  } catch (error) {
+    throw error;
+  }
 };
 
 // Find user by ID
-const findUserById = (id) => {
-  return users.find(u => u.id === parseInt(id));
+const findUserById = async (id) => {
+  try {
+    return await User.findById(id).select('-password');
+  } catch (error) {
+    return null;
+  }
 };
 
 // Find user by email
-const findUserByEmail = (email) => {
-  return users.find(u => u.email === email);
+const findUserByEmail = async (email) => {
+  try {
+    return await User.findOne({ email });
+  } catch (error) {
+    return null;
+  }
 };
 
 // Find user by employee ID
-const findUserByEmployeeId = (employeeId) => {
-  return users.find(u => u.employeeId === employeeId);
+const findUserByEmployeeId = async (employeeId) => {
+  try {
+    return await User.findOne({ employeeId }).select('-password');
+  } catch (error) {
+    return null;
+  }
 };
 
 // Get all users
-const getAllUsers = () => {
-  return users;
+const getAllUsers = async () => {
+  try {
+    return await User.find().select('-password').sort({ createdAt: -1 });
+  } catch (error) {
+    return [];
+  }
 };
 
 // Update user
-const updateUser = (id, updates) => {
-  const userIndex = users.findIndex(u => u.id === parseInt(id));
-  if (userIndex === -1) {
-    throw new Error('User not found');
-  }
+const updateUser = async (id, updates) => {
+  try {
+    // Prevent updating certain fields
+    const { _id, password, createdAt, ...allowedUpdates } = updates;
+    
+    // If password is being updated, hash it
+    if (updates.password) {
+      allowedUpdates.password = await bcrypt.hash(updates.password, 10);
+    }
 
-  // Prevent updating certain fields
-  const { id: _, createdAt, ...allowedUpdates } = updates;
-  users[userIndex] = { ...users[userIndex], ...allowedUpdates };
-  return users[userIndex];
+    const user = await User.findByIdAndUpdate(
+      id,
+      { $set: allowedUpdates },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    return user;
+  } catch (error) {
+    throw error;
+  }
 };
 
 // Update leave balance
-const updateLeaveBalance = (userId, leaveType, amount) => {
-  const user = findUserById(userId);
-  if (!user) {
-    throw new Error('User not found');
-  }
+const updateLeaveBalance = async (userId, leaveType, amount) => {
+  try {
+    const updateField = `leaveBalance.${leaveType}`;
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $inc: { [updateField]: amount } },
+      { new: true }
+    ).select('-password');
 
-  user.leaveBalance[leaveType] = (user.leaveBalance[leaveType] || 0) + amount;
-  return user;
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    return user;
+  } catch (error) {
+    throw error;
+  }
 };
 
 // Get users by manager ID
-const getUsersByManagerId = (managerId) => {
-  return users.filter(u => u.managerId === parseInt(managerId));
+const getUsersByManagerId = async (managerId) => {
+  try {
+    return await User.find({ managerId }).select('-password');
+  } catch (error) {
+    return [];
+  }
 };
 
 // Delete user
-const deleteUser = (id) => {
-  const userIndex = users.findIndex(u => u.id === parseInt(id));
-  if (userIndex === -1) {
-    throw new Error('User not found');
+const deleteUser = async (id) => {
+  try {
+    const user = await User.findByIdAndDelete(id).select('-password');
+    if (!user) {
+      throw new Error('User not found');
+    }
+    return user;
+  } catch (error) {
+    throw error;
   }
+};
 
-  const deletedUser = users.splice(userIndex, 1)[0];
-  return deletedUser;
+// Verify password
+const verifyPassword = async (plainPassword, hashedPassword) => {
+  return await bcrypt.compare(plainPassword, hashedPassword);
 };
 
 // Initialize with some default users (for testing)
-const initializeDefaultUsers = () => {
-  if (users.length === 0) {
-    // Admin user
-    createUser({
-      employeeId: 'EMP001',
-      name: 'Admin User',
-      email: 'admin@company.com',
-      password: 'admin123',
-      role: ROLES.ADMIN,
-      department: 'Management'
-    });
+const initializeDefaultUsers = async () => {
+  try {
+    const userCount = await User.countDocuments();
+    
+    if (userCount === 0) {
+      console.log('Initializing default users...');
+      
+      // Admin user
+      await createUser({
+        employeeId: 'EMP001',
+        name: 'Admin User',
+        email: 'admin@company.com',
+        password: 'admin123',
+        role: ROLES.ADMIN,
+        department: 'Management'
+      });
 
-    // Manager user
-    createUser({
-      employeeId: 'EMP002',
-      name: 'Manager User',
-      email: 'manager@company.com',
-      password: 'manager123',
-      role: ROLES.MANAGER,
-      department: 'Engineering'
-    });
+      // Manager user
+      const manager = await createUser({
+        employeeId: 'EMP002',
+        name: 'Manager User',
+        email: 'manager@company.com',
+        password: 'manager123',
+        role: ROLES.MANAGER,
+        department: 'Engineering'
+      });
 
-    // Employee user
-    createUser({
-      employeeId: 'EMP003',
-      name: 'Employee User',
-      email: 'employee@company.com',
-      password: 'employee123',
-      role: ROLES.EMPLOYEE,
-      department: 'Engineering',
-      managerId: 2
-    });
+      // Employee user
+      await createUser({
+        employeeId: 'EMP003',
+        name: 'Employee User',
+        email: 'employee@company.com',
+        password: 'employee123',
+        role: ROLES.EMPLOYEE,
+        department: 'Engineering',
+        managerId: manager._id
+      });
+
+      console.log('Default users created successfully');
+    }
+  } catch (error) {
+    console.error('Error initializing default users:', error.message);
   }
 };
 
@@ -159,5 +200,6 @@ module.exports = {
   updateLeaveBalance,
   getUsersByManagerId,
   deleteUser,
+  verifyPassword,
   initializeDefaultUsers
 };

@@ -9,7 +9,7 @@ const {
 } = require('../models/user');
 
 // Login
-const login = (req, res) => {
+const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -20,7 +20,7 @@ const login = (req, res) => {
       });
     }
 
-    const user = findUserByEmail(email);
+    const user = await findUserByEmail(email);
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -28,8 +28,11 @@ const login = (req, res) => {
       });
     }
 
-    // In production, use bcrypt to compare hashed passwords
-    if (user.password !== password) {
+    // Verify password using bcrypt
+    const { verifyPassword } = require('../models/user');
+    const isPasswordValid = await verifyPassword(password, user.password);
+    
+    if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -37,14 +40,15 @@ const login = (req, res) => {
     }
 
     // Don't send password in response
-    const { password: _, ...userWithoutPassword } = user;
+    const userObj = user.toObject ? user.toObject() : user;
+    const { password: _, ...userWithoutPassword } = userObj;
 
     res.json({
       success: true,
       message: 'Login successful',
       data: {
         user: userWithoutPassword,
-        token: `mock_token_${user.id}` // In production, use JWT
+        token: `mock_token_${user._id}` // In production, use JWT
       }
     });
   } catch (error) {
@@ -56,7 +60,7 @@ const login = (req, res) => {
 };
 
 // Register (for admin to add new users)
-const register = (req, res) => {
+const register = async (req, res) => {
   try {
     const { employeeId, name, email, password, role, department, managerId } = req.body;
 
@@ -84,18 +88,19 @@ const register = (req, res) => {
       });
     }
 
-    const user = createUser({
+    const user = await createUser({
       employeeId,
       name,
       email,
-      password, // In production, hash this with bcrypt
+      password,
       role,
       department,
       managerId
     });
 
     // Don't send password in response
-    const { password: _, ...userWithoutPassword } = user;
+    const userObj = user.toObject ? user.toObject() : user;
+    const { password: _, ...userWithoutPassword } = userObj;
 
     res.status(201).json({
       success: true,
@@ -111,11 +116,11 @@ const register = (req, res) => {
 };
 
 // Get current user profile
-const getProfile = (req, res) => {
+const getProfile = async (req, res) => {
   try {
     const userId = req.userId; // This would come from auth middleware
 
-    const user = findUserById(userId);
+    const user = await findUserById(userId);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -123,12 +128,10 @@ const getProfile = (req, res) => {
       });
     }
 
-    // Don't send password in response
-    const { password: _, ...userWithoutPassword } = user;
-
+    // User already comes without password from findUserById
     res.json({
       success: true,
-      data: userWithoutPassword
+      data: user
     });
   } catch (error) {
     res.status(500).json({
@@ -139,17 +142,15 @@ const getProfile = (req, res) => {
 };
 
 // Get all users (admin only)
-const getUsers = (req, res) => {
+const getUsers = async (req, res) => {
   try {
-    const users = getAllUsers();
+    const users = await getAllUsers();
     
-    // Don't send passwords in response
-    const usersWithoutPasswords = users.map(({ password, ...user }) => user);
-
+    // Users already come without passwords from getAllUsers
     res.json({
       success: true,
-      data: usersWithoutPasswords,
-      count: usersWithoutPasswords.length
+      data: users,
+      count: users.length
     });
   } catch (error) {
     res.status(500).json({
@@ -160,11 +161,11 @@ const getUsers = (req, res) => {
 };
 
 // Get user by ID (admin/manager only)
-const getUserById = (req, res) => {
+const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const user = findUserById(id);
+    const user = await findUserById(id);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -172,12 +173,10 @@ const getUserById = (req, res) => {
       });
     }
 
-    // Don't send password in response
-    const { password: _, ...userWithoutPassword } = user;
-
+    // User already comes without password from findUserById
     res.json({
       success: true,
-      data: userWithoutPassword
+      data: user
     });
   } catch (error) {
     res.status(500).json({
@@ -188,25 +187,18 @@ const getUserById = (req, res) => {
 };
 
 // Update user (admin only)
-const updateUserById = (req, res) => {
+const updateUserById = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
 
-    // If password is being updated, hash it (in production)
-    if (updates.password) {
-      // In production: updates.password = await bcrypt.hash(updates.password, 10);
-    }
+    const updatedUser = await updateUser(id, updates);
 
-    const updatedUser = updateUser(id, updates);
-
-    // Don't send password in response
-    const { password: _, ...userWithoutPassword } = updatedUser;
-
+    // User already comes without password from updateUser
     res.json({
       success: true,
       message: 'User updated successfully',
-      data: userWithoutPassword
+      data: updatedUser
     });
   } catch (error) {
     res.status(400).json({
@@ -217,19 +209,17 @@ const updateUserById = (req, res) => {
 };
 
 // Delete user (admin only)
-const deleteUserById = (req, res) => {
+const deleteUserById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const deletedUser = deleteUser(id);
+    const deletedUser = await deleteUser(id);
 
-    // Don't send password in response
-    const { password: _, ...userWithoutPassword } = deletedUser;
-
+    // User already comes without password from deleteUser
     res.json({
       success: true,
       message: 'User deleted successfully',
-      data: userWithoutPassword
+      data: deletedUser
     });
   } catch (error) {
     res.status(400).json({
