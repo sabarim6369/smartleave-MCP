@@ -9,6 +9,7 @@ async function rejectLeave(args) {
     
     if (!leaveId) {
       throw new Error('Leave ID is required');
+      
     }
     
     if (!reason) {
